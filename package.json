@@ -1,0 +1,38 @@
+{
+  "name": "beetle-cli",
+  "version": "1.0.0",
+  "description": "AI-Powered Code Review Assistant CLI",
+  "main": "dist/index.js",
+  "bin": {
+    "beetle": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "cli",
+    "code-review",
+    "ai",
+    "beetle"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@clack/core": "^0.5.0",
+    "@clack/prompts": "^0.11.0",
+    "commander": "^14.0.2",
+    "gradient-string": "^3.0.0",
+    "open": "^11.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
