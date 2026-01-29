@@ -1,6 +1,6 @@
 {
-  "name": "beetleai_dev",
-  "version": "0.0.2",
+  "name": "beetle",
+  "version": "0.0.3",
   "description": "AI-Powered Code Review Assistant CLI",
   "main": "dist/index.js",
   "bin": {

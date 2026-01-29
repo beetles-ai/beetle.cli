@@ -97,7 +97,7 @@ const program = new Command();
 program
   .name('beetle')
   .description('AI-Powered Code Review Assistant CLI')
-  .version('0.0.1', '-v, --version');
+  .version('0.0.3', '-v, --version');
 
 // Auth commands
 const authCommand = program
@@ -133,8 +133,8 @@ program
   .option('--prompt-only', 'Extract and show only AI prompts')
   .option('--staged', 'Review only staged files')
   .option('--all', 'Review all changed files (default)')
-  .action(async () => {
-    await reviewCommand();
+  .action(async (options) => {
+    await reviewCommand(options);
   });
 
 

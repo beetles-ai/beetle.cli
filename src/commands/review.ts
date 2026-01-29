@@ -1237,17 +1237,16 @@ async function runReviewSession(changes: GitChanges): Promise<void> {
   }
 }
 
-export async function reviewCommand(): Promise<void> {
+export async function reviewCommand(options: any = {}): Promise<void> {
   if (!requireAuth()) process.exit(1);
   if (!requireGitRepo()) process.exit(1);
   
-  const args = process.argv.slice(2);
-  const stagedOnly = args.includes('--staged');
+  const stagedOnly = !!options.staged;
   
   let changes = getChangedFiles({ stagedOnly });
   
   // Direct Prompt Mode
-  if (args.includes('--prompt-only')) {
+  if (options.promptOnly) {
     await runPromptOnlyMode(changes);
     return;
   }
