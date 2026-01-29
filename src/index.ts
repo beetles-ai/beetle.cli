@@ -97,7 +97,7 @@ const program = new Command();
 program
   .name('beetle')
   .description('AI-Powered Code Review Assistant CLI')
-  .version('0.0.3', '-v, --version');
+  .version('0.0.1', '-v, --version');
 
 // Auth commands
 const authCommand = program
