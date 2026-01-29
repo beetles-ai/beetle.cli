@@ -5,6 +5,7 @@ import { intro, outro, note } from '@clack/prompts';
 import gradient from 'gradient-string';
 import pc from 'picocolors';
 import { loginCommand, logoutCommand, statusCommand } from './commands/auth.js';
+import { reviewCommand } from './commands/review.js';
 
 // Linear gradient for BEETLE branding
 const beetleGradient = gradient(['#5ea58e', '#6bb85f', '#64b394', '#a5ce59', '#dfc48f']);
@@ -119,10 +120,8 @@ program
 program
   .command('review')
   .description('Start a code review on current branch')
-  .action(() => {
-    intro(pc.bgCyan(pc.black(' beetle review ')));
-    note('This command will be implemented soon.', 'Coming Soon');
-    outro(pc.dim('Stay tuned!'));
+  .action(async () => {
+    await reviewCommand();
   });
 
 program
