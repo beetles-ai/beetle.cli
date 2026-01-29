@@ -7,8 +7,7 @@ import fs from 'fs';
 import path from 'path';
 
 // API base URL - use environment variable or default to production
-const API_BASE_URL = process.env.BEETLE_API_URL || 'http://localhost:3001';
-console.log(API_BASE_URL, "here is api base url")
+const API_BASE_URL = process.env.BEETLE_API_URL || 'https://api.beetleai.dev';
 export interface ReviewComment {
   id: string;
   file_path: string;
@@ -216,7 +215,8 @@ export function buildReviewPayload(files: ChangedFile[]): any {
       commits: [],
       files: filesPayload,
       fullDiff: getFullDiff() || 'No changes'
-    }
+    },
+    analysis_type: 'cli_analysis'
   };
 }
 

@@ -21,14 +21,31 @@ const BEETLE_ASCII = `
 `;
 
 // Common commands to display after installation
-const COMMANDS = [
-  { command: 'beetle auth login', description: 'Authenticate with your Beetle account' },
-  { command: 'beetle auth logout', description: 'Log out from your account' },
-  { command: 'beetle auth status', description: 'Check authentication status' },
-  { command: 'beetle init', description: 'Initialize Beetle in your project' },
-  { command: 'beetle review', description: 'Start a code review on current branch' },
-  { command: 'beetle config', description: 'Configure Beetle settings' },
-  { command: 'beetle help', description: 'Show all available commands' },
+// Command groups for help display
+const COMMAND_GROUPS = [
+  {
+    title: 'Authentication',
+    commands: [
+      { command: 'beetle auth login', description: 'Authenticate with your Beetle account' },
+      { command: 'beetle auth logout', description: 'Log out from your account' },
+      { command: 'beetle auth status', description: 'Check authentication status' },
+    ]
+  },
+  {
+    title: 'Review',
+    commands: [
+      { command: 'beetle review', description: 'Start a code review on current branch' },
+      { command: 'beetle review --staged', description: 'Review only staged files' },
+      { command: 'beetle review --prompt-only', description: 'Stream AI prompts only (no interactive UI)' },
+    ]
+  },
+  {
+    title: 'Options',
+    commands: [
+      { command: '-v, --version', description: 'Output the version number' },
+      { command: '-h, --help', description: 'Display help for command' },
+    ]
+  }
 ];
 
 /**
@@ -41,18 +58,19 @@ function displayIntro(): void {
 }
 
 /**
- * Display common commands in a formatted way
+ * Display commands in formatted groups
  */
 function displayCommands(): void {
-  const commandsFormatted = COMMANDS
-    .map(({ command, description }) => 
-      `  ${pc.cyan(command.padEnd(24))} ${pc.dim(description)}`
-    )
-    .join('\n');
-
-  console.log(pc.bold('\n  📋 Common Commands:\n'));
-  console.log(commandsFormatted);
-  console.log();
+  COMMAND_GROUPS.forEach(group => {
+    console.log(pc.bold(`  ${group.title}:`));
+    const commandLines = group.commands
+      .map(({ command, description }) => 
+        `    ${pc.cyan(command.padEnd(28))} ${pc.dim(description)}`
+      )
+      .join('\n');
+    console.log(commandLines);
+    console.log();
+  });
 }
 
 /**
@@ -79,7 +97,7 @@ const program = new Command();
 program
   .name('beetle')
   .description('AI-Powered Code Review Assistant CLI')
-  .version('1.0.0');
+  .version('0.0.1', '-v, --version');
 
 // Auth commands
 const authCommand = program
@@ -107,39 +125,27 @@ authCommand
     await statusCommand();
   });
 
-// Placeholder commands (to be implemented)
-program
-  .command('init')
-  .description('Initialize Beetle in your project')
-  .action(() => {
-    intro(pc.bgCyan(pc.black(' beetle init ')));
-    note('This command will be implemented soon.', 'Coming Soon');
-    outro(pc.dim('Stay tuned!'));
-  });
+
 
 program
   .command('review')
   .description('Start a code review on current branch')
+  .option('--prompt-only', 'Extract and show only AI prompts')
+  .option('--staged', 'Review only staged files')
+  .option('--all', 'Review all changed files (default)')
   .action(async () => {
     await reviewCommand();
   });
 
-program
-  .command('config')
-  .description('Configure Beetle settings')
-  .action(() => {
-    intro(pc.bgCyan(pc.black(' beetle config ')));
-    note('This command will be implemented soon.', 'Coming Soon');
-    outro(pc.dim('Stay tuned!'));
-  });
+
 
 program
-  .command('status')
-  .description('Check current review status')
+  .command('help')
+  .alias('h')
+  .description('Show all available commands')
   .action(() => {
-    intro(pc.bgCyan(pc.black(' beetle status ')));
-    note('This command will be implemented soon.', 'Coming Soon');
-    outro(pc.dim('Stay tuned!'));
+    displayIntro();
+    displayCommands();
   });
 
 // Default action (no command) - show welcome

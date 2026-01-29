@@ -22,7 +22,7 @@ export interface GitChanges {
 /**
  * Get all changed files (staged + unstaged + untracked)
  */
-export function getChangedFiles(): GitChanges {
+export function getChangedFiles(options: { stagedOnly?: boolean } = {}): GitChanges {
   const cwd = getRepoPath();
   const files: ChangedFile[] = [];
   
@@ -53,71 +53,73 @@ export function getChangedFiles(): GitChanges {
       });
     }
     
-    // Get unstaged changes with stats
-    const unstagedOutput = execSync('git diff --numstat', { 
-      encoding: 'utf-8',
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
-    
-    if (unstagedOutput) {
-      unstagedOutput.split('\n').forEach(line => {
-        const parts = line.split('\t');
-        if (parts.length >= 3) {
-          const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10);
-          const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10);
-          const filePath = parts[2];
-          
-          // Check if already in list (from staged)
-          const existing = files.find(f => f.path === filePath);
-          if (existing) {
-            existing.additions += additions;
-            existing.deletions += deletions;
-          } else {
+    if (!options.stagedOnly) {
+      // Get unstaged changes with stats
+      const unstagedOutput = execSync('git diff --numstat', { 
+        encoding: 'utf-8',
+        cwd,
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).trim();
+      
+      if (unstagedOutput) {
+        unstagedOutput.split('\n').forEach(line => {
+          const parts = line.split('\t');
+          if (parts.length >= 3) {
+            const additions = parts[0] === '-' ? 0 : parseInt(parts[0], 10);
+            const deletions = parts[1] === '-' ? 0 : parseInt(parts[1], 10);
+            const filePath = parts[2];
+            
+            // Check if already in list (from staged)
+            const existing = files.find(f => f.path === filePath);
+            if (existing) {
+              existing.additions += additions;
+              existing.deletions += deletions;
+            } else {
+              files.push({
+                path: filePath,
+                status: 'modified',
+                additions,
+                deletions,
+                staged: false
+              });
+            }
+          }
+        });
+      }
+      
+      // Get untracked files
+      const untrackedOutput = execSync('git ls-files --others --exclude-standard', { 
+        encoding: 'utf-8',
+        cwd,
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).trim();
+      
+      if (untrackedOutput) {
+        untrackedOutput.split('\n').forEach(filePath => {
+          if (filePath) {
+            // Count lines in file for additions
+            let additions = 0;
+            try {
+              const content = execSync(`wc -l < "${filePath}"`, {
+                encoding: 'utf-8',
+                cwd,
+                stdio: ['pipe', 'pipe', 'pipe']
+              }).trim();
+              additions = parseInt(content, 10) || 0;
+            } catch {
+              additions = 0;
+            }
+            
             files.push({
               path: filePath,
-              status: 'modified',
+              status: 'untracked',
               additions,
-              deletions,
+              deletions: 0,
               staged: false
             });
           }
-        }
-      });
-    }
-    
-    // Get untracked files
-    const untrackedOutput = execSync('git ls-files --others --exclude-standard', { 
-      encoding: 'utf-8',
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
-    
-    if (untrackedOutput) {
-      untrackedOutput.split('\n').forEach(filePath => {
-        if (filePath) {
-          // Count lines in file for additions
-          let additions = 0;
-          try {
-            const content = execSync(`wc -l < "${filePath}"`, {
-              encoding: 'utf-8',
-              cwd,
-              stdio: ['pipe', 'pipe', 'pipe']
-            }).trim();
-            additions = parseInt(content, 10) || 0;
-          } catch {
-            additions = 0;
-          }
-          
-          files.push({
-            path: filePath,
-            status: 'untracked',
-            additions,
-            deletions: 0,
-            staged: false
-          });
-        }
-      });
+        });
+      }
     }
     
     // Get status to determine added/deleted

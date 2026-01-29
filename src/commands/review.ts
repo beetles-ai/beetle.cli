@@ -1,6 +1,7 @@
 import gradient from 'gradient-string';
 import pc from 'picocolors';
 import readline from 'readline';
+import path from 'path';
 import { execSync } from 'child_process';
 import { 
   requireAuth, 
@@ -11,7 +12,7 @@ import {
   getAuthUser 
 } from '../guards.js';
 import { getChangedFiles, GitChanges } from '../git.js';
-import { submitReview, pollComments, getAnalysisStatus, ReviewComment } from '../api.js';
+import { submitReview, pollComments, getAnalysisStatus, stopAnalysis, ReviewComment } from '../api.js';
 
 // BEETLE gradient
 const beetleGradient = gradient(['#5ea58e', '#6bb85f', '#64b394', '#a5ce59', '#dfc48f']);
@@ -49,6 +50,7 @@ interface FileGroup {
 }
 
 interface ReviewState {
+  dataId?: string;
   mode: 'list' | 'detail';  // list = file tree, detail = split view
   focusedPanel: 'left' | 'right'; // which panel has focus in detail mode
   files: FileGroup[];
@@ -59,6 +61,100 @@ interface ReviewState {
   totalComments: number;
   resolvedComments: number;
   status: 'running' | 'completed' | 'failed';
+  spinnerFrame: number;
+}
+
+async function runPromptOnlyMode(changes: GitChanges): Promise<void> {
+  let currentDataId: string | undefined;
+  let spinnerInterval: NodeJS.Timeout | null = null;
+  const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  let frame = 0;
+
+  const startSpinner = () => {
+    if (spinnerInterval) return;
+    spinnerInterval = setInterval(() => {
+      process.stdout.write(`\r${pc.cyan(spinnerFrames[frame++ % spinnerFrames.length])} Analysis in progress...`);
+    }, 80);
+  };
+
+  const stopSpinner = () => {
+    if (spinnerInterval) {
+      clearInterval(spinnerInterval);
+      spinnerInterval = null;
+      process.stdout.write('\r\x1B[K'); // clear line
+    }
+  };
+  
+  const cleanup = async (code: number = 0) => {
+    stopSpinner();
+    if (currentDataId) {
+       await stopAnalysis(currentDataId).catch(() => {});
+    }
+    if (code === 0) console.log(pc.green('\n  ✓ Review session ended.\n'));
+    process.exit(code);
+  };
+
+  process.on('SIGINT', async () => await cleanup(0));
+
+  try {
+    console.log(pc.yellow('  → Submitting review...'));
+    const response = await submitReview(changes.files);
+    const dataId = response.extension_data_id;
+    currentDataId = dataId;
+    
+    console.log(pc.green('  ✓ Review started. Streaming AI prompts...\n'));
+    startSpinner();
+    
+    // Track processed comments to avoid duplicates
+    const processedCommentIds = new Set<string>();
+    
+    // Poll loop
+    let status = 'running';
+    while (status === 'running') {
+      const comments = await pollComments(dataId);
+      
+      let gotNew = false;
+      // Process new comments
+      comments.forEach(c => {
+        if (!processedCommentIds.has(c.id)) {
+          processedCommentIds.add(c.id);
+          const { aiPrompt, title } = parseCommentMetadata(c.content);
+          
+          if (aiPrompt) {
+            gotNew = true;
+            stopSpinner();
+            console.log(pc.bold(pc.cyan(`\n● ${title || 'Issue'}`)));
+            console.log(pc.dim('─'.repeat(40)));
+            console.log(aiPrompt.trim());
+            console.log('');
+          }
+        }
+      });
+      
+      if (gotNew) startSpinner();
+      
+      const analysis = await getAnalysisStatus(dataId);
+      status = analysis.analysis_status;
+      
+      if (status === 'running') {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+    
+    stopSpinner();
+    if (status === 'failed') {
+      console.log(pc.red('\n✗ Analysis failed.'));
+      process.exit(1);
+    } else {
+      console.log(pc.green('\n✓ Analysis complete.'));
+      process.exit(0);
+    }
+    
+  } catch (error: any) {
+    stopSpinner();
+    console.log(pc.red(`\n✗ Error: ${error.message}`));
+    process.exit(1);
+  }
 }
 
 // ==============================================================
@@ -636,7 +732,9 @@ function renderSplitView(state: ReviewState): void {
   
   // Split footer to ensure it fits
   const footer1 = `${scrollHint}  |  ${pc.dim('Tab: Switch Panel')}  |  ${pc.dim('Mouse: Scroll/Click')}`;
-  const footer2 = `${pc.dim('←/Esc: Back')}  |  ${pc.dim('c: Copy')}  |  ${pc.dim('q: Quit')}  |  ${state.status === 'running' ? pc.yellow(':: Reviewing...') : pc.green(':: Done')}`;
+  const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'][(state.spinnerFrame || 0) % 10];
+  const statusMsg = state.status === 'running' ? pc.yellow(`${spinner} Reviewing...`) : pc.green(':: Done');
+  const footer2 = `${pc.dim('←/Esc: Back')}  |  ${pc.dim('c: Copy')}  |  ${pc.dim('q: Quit')}  |  ${statusMsg}`;
   
   const footer1Trunc = truncateLine(footer1, width);
   const footer2Trunc = truncateLine(footer2, width);
@@ -669,7 +767,8 @@ function renderListView(state: ReviewState): void {
   // Status bar
   console.log(pc.dim('─'.repeat(width)));
   console.log(`${pc.dim('↑↓: Navigate')}  |  ${pc.dim('→/↵: View Details')}  |  ${pc.dim('Tab: Expand/Collapse')}  |  ${pc.dim('q: Quit')}`);
-  console.log(state.status === 'running' ? pc.yellow(':: Reviewing...') : pc.green(':: Review completed! 🎉'));
+  const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'][(state.spinnerFrame || 0) % 10];
+  console.log(state.status === 'running' ? pc.yellow(`${spinner} Reviewing...`) : pc.green(':: Review completed! 🎉'));
 }
 
 function render(state: ReviewState): void {
@@ -960,14 +1059,30 @@ function displayLoadingScreen(): void {
 // ==============================================================
 
 async function runReviewSession(changes: GitChanges): Promise<void> {
-  displayLoadingScreen();
+  // Animated Loading Screen
+  let frame = 0;
+  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  const loadingMsg = LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)];
+  
+  const renderLoading = () => {
+    const { width, height } = getTerminalSize();
+    clearScreen();
+    console.log('\n'.repeat(Math.floor(height / 2) - 1));
+    const spinner = frames[frame++ % frames.length];
+    console.log(centerText(pc.cyan(`${spinner} ${loadingMsg}`), width));
+  };
+  
+  renderLoading();
+  const loadingInterval = setInterval(renderLoading, 80);
   
   try {
     const response = await submitReview(changes.files);
+    clearInterval(loadingInterval);
     const dataId = response.extension_data_id;
     
     // Initialize state
     let state: ReviewState = {
+      dataId: dataId,
       mode: 'list',
       focusedPanel: 'left',
       files: [],
@@ -977,7 +1092,8 @@ async function runReviewSession(changes: GitChanges): Promise<void> {
       leftPanelScrollOffset: 0,
       totalComments: 0,
       resolvedComments: 0,
-      status: 'running'
+      status: 'running',
+      spinnerFrame: 0
     };
     
     // Group comments by file
@@ -1021,6 +1137,13 @@ async function runReviewSession(changes: GitChanges): Promise<void> {
         }
       } catch {}
     }, POLL_INTERVAL);
+
+    const uiTimer = setInterval(() => {
+      if (state.status === 'running') {
+        state.spinnerFrame = (state.spinnerFrame || 0) + 1;
+        render(state);
+      }
+    }, 100);
     
     // Keyboard handling
     readline.emitKeypressEvents(process.stdin);
@@ -1032,17 +1155,21 @@ async function runReviewSession(changes: GitChanges): Promise<void> {
     };
     process.stdout.on('resize', handleResize);
 
-    const cleanup = () => {
+    const cleanup = async () => {
+      if (state.dataId) {
+        await stopAnalysis(state.dataId).catch(() => {});
+      }
       process.stdout.write(MOUSE_DISABLE);
       process.stdout.off('resize', handleResize);
       clearInterval(pollTimer);
+      clearInterval(uiTimer);
       exitAlternateScreen();
       if (process.stdin.isTTY) process.stdin.setRawMode(false);
       console.log(pc.green('\n  ✓ Review session ended.\n'));
       process.exit(0);
     };
     
-    process.stdin.on('keypress', (str, key) => {
+    process.stdin.on('keypress', async (str, key) => {
       // Handle Mouse Events via regex on sequence
       if (key && key.sequence) {
         const mouseMatch = key.sequence.match(/\x1B\[<(\d+);(\d+);(\d+)([Mm])/);
@@ -1086,7 +1213,7 @@ async function runReviewSession(changes: GitChanges): Promise<void> {
       state = result.state;
       
       if (result.action === 'quit') {
-        cleanup();
+        await cleanup();
       } else if (result.action === 'render') {
         render(state);
       } else if (result.action === 'copy') {
@@ -1114,9 +1241,18 @@ export async function reviewCommand(): Promise<void> {
   if (!requireAuth()) process.exit(1);
   if (!requireGitRepo()) process.exit(1);
   
-  enterAlternateScreen();
+  const args = process.argv.slice(2);
+  const stagedOnly = args.includes('--staged');
   
-  let changes = getChangedFiles();
+  let changes = getChangedFiles({ stagedOnly });
+  
+  // Direct Prompt Mode
+  if (args.includes('--prompt-only')) {
+    await runPromptOnlyMode(changes);
+    return;
+  }
+  
+  enterAlternateScreen();
   displayInitialUI(changes);
   
   readline.emitKeypressEvents(process.stdin);
@@ -1127,7 +1263,7 @@ export async function reviewCommand(): Promise<void> {
   };
   process.stdout.on('resize', handleResize);
 
-  const cleanup = () => {
+  const cleanup = async () => {
     process.stdout.off('resize', handleResize);
     exitAlternateScreen();
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
@@ -1139,9 +1275,9 @@ export async function reviewCommand(): Promise<void> {
     if (!key) return;
     
     if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
-      cleanup();
+      await cleanup();
     } else if (key.name === 'r') {
-      changes = getChangedFiles();
+      changes = getChangedFiles({ stagedOnly });
       displayInitialUI(changes);
     } else if (key.name === 'return' && changes.totalFiles > 0) {
       process.stdin.removeAllListeners('keypress');

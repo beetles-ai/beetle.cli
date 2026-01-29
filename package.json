@@ -1,11 +1,14 @@
 {
-  "name": "beetle-cli",
-  "version": "1.0.0",
+  "name": "beetleai_dev",
+  "version": "0.0.1",
   "description": "AI-Powered Code Review Assistant CLI",
   "main": "dist/index.js",
   "bin": {
     "beetle": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",

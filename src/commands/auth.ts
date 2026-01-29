@@ -11,7 +11,7 @@ import {
 } from '../config.js';
 
 // Base URL for beetle web app
-const BEETLE_WEB_URL = process.env.BEETLE_WEB_URL || 'http://localhost:3000';
+const BEETLE_WEB_URL = process.env.BEETLE_WEB_URL || 'https://beetleai.dev';
 
 /**
  * Find an available port for the local auth callback server
@@ -59,7 +59,7 @@ function waitForAuthCallback(port: number): Promise<string> {
         const error = url.searchParams.get('error');
         
         // Send response to browser
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(`
           <!DOCTYPE html>
           <html>
@@ -187,6 +187,7 @@ export async function loginCommand(): Promise<void> {
     );
     
     outro(pc.green('✓ You are now authenticated!'));
+    process.exit(0);
     
   } catch (error) {
     s.stop('Authentication failed');
